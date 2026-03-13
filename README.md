@@ -79,3 +79,18 @@ Dry run mode (plan only, no uploads):
 ```bash
 DRY_RUN=true go run ./cmd
 ```
+
+## Run with Docker Compose
+
+`docker compose` builds a multi-stage image (`golang:1.25-alpine` builder + Alpine runtime)
+and injects variables from `.env` via `env_file`.
+
+```bash
+docker compose run --rm migrator
+```
+
+Dry run with Docker Compose:
+
+```bash
+docker compose run --rm -e DRY_RUN=true migrator
+```

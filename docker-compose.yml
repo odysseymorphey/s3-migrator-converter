@@ -1,0 +1,8 @@
+services:
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: s3-migrator-converter:local
+    env_file:
+      - .env

@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 )
-
-const defaultWebPQuality = 80
 
 type Config struct {
 	SpacesKey    string
@@ -30,64 +28,68 @@ type Config struct {
 	DryRun       bool
 }
 
+type envConfig struct {
+	SpacesKey    string `env:"SPACES_KEY"`
+	SpacesSecret string `env:"SPACES_SECRET"`
+	SpacesRegion string `env:"SPACES_REGION"`
+	Endpoint     string `env:"SPACES_ENDPOINT"`
+
+	SourceBucket string `env:"SOURCE_BUCKET"`
+	SourcePrefix string `env:"SOURCE_PREFIX"`
+	DestBucket   string `env:"DEST_BUCKET"`
+	DestPrefix   string `env:"DEST_PREFIX"`
+
+	WebPQuality  int  `env:"WEBP_QUALITY" envDefault:"80"`
+	Concurrency  int  `env:"CONCURRENCY"`
+	SkipExisting bool `env:"SKIP_EXISTING" envDefault:"true"`
+	DryRun       bool `env:"DRY_RUN" envDefault:"false"`
+}
+
 func Load() (Config, error) {
 	if err := loadDotEnv(); err != nil {
 		return Config{}, err
 	}
+	if err := applyAliases(); err != nil {
+		return Config{}, err
+	}
+
+	var parsed envConfig
+	if err := env.Parse(&parsed); err != nil {
+		return Config{}, fmt.Errorf("parse env config: %w", err)
+	}
 
 	cfg := Config{
-		SpacesKey:    firstNonEmpty(os.Getenv("SPACES_KEY"), os.Getenv("AWS_ACCESS_KEY_ID")),
-		SpacesSecret: firstNonEmpty(os.Getenv("SPACES_SECRET"), os.Getenv("AWS_SECRET_ACCESS_KEY")),
-		SpacesRegion: strings.TrimSpace(os.Getenv("SPACES_REGION")),
-		SourceBucket: strings.TrimSpace(os.Getenv("SOURCE_BUCKET")),
-		SourcePrefix: normalizePrefix(os.Getenv("SOURCE_PREFIX")),
-		DestBucket:   strings.TrimSpace(os.Getenv("DEST_BUCKET")),
-		DestPrefix:   normalizePrefix(os.Getenv("DEST_PREFIX")),
-		WebPQuality:  defaultWebPQuality,
-		Concurrency:  max(runtime.NumCPU(), 2),
-		SkipExisting: true,
-		DryRun:       false,
+		SpacesKey:    strings.TrimSpace(parsed.SpacesKey),
+		SpacesSecret: strings.TrimSpace(parsed.SpacesSecret),
+		SpacesRegion: strings.TrimSpace(parsed.SpacesRegion),
+		Endpoint:     normalizeEndpoint(parsed.Endpoint),
+
+		SourceBucket: strings.TrimSpace(parsed.SourceBucket),
+		SourcePrefix: normalizePrefix(parsed.SourcePrefix),
+		DestBucket:   strings.TrimSpace(parsed.DestBucket),
+		DestPrefix:   normalizePrefix(parsed.DestPrefix),
+
+		WebPQuality:  parsed.WebPQuality,
+		Concurrency:  parsed.Concurrency,
+		SkipExisting: parsed.SkipExisting,
+		DryRun:       parsed.DryRun,
 	}
+
 	if cfg.DestBucket == "" {
 		cfg.DestBucket = cfg.SourceBucket
 	}
-
-	if raw := strings.TrimSpace(os.Getenv("SPACES_ENDPOINT")); raw != "" {
-		cfg.Endpoint = normalizeEndpoint(raw)
-	} else {
+	if cfg.Endpoint == "" {
 		cfg.Endpoint = normalizeEndpoint(fmt.Sprintf("https://%s.digitaloceanspaces.com", cfg.SpacesRegion))
 	}
-
-	if raw := strings.TrimSpace(os.Getenv("WEBP_QUALITY")); raw != "" {
-		q, err := strconv.Atoi(raw)
-		if err != nil || q < 1 || q > 100 {
-			return Config{}, fmt.Errorf("WEBP_QUALITY must be an integer from 1 to 100")
-		}
-		cfg.WebPQuality = q
+	if cfg.Concurrency == 0 {
+		cfg.Concurrency = max(runtime.NumCPU(), 2)
 	}
 
-	if raw := strings.TrimSpace(os.Getenv("CONCURRENCY")); raw != "" {
-		workers, err := strconv.Atoi(raw)
-		if err != nil || workers < 1 {
-			return Config{}, fmt.Errorf("CONCURRENCY must be an integer greater than 0")
-		}
-		cfg.Concurrency = workers
+	if cfg.WebPQuality < 1 || cfg.WebPQuality > 100 {
+		return Config{}, fmt.Errorf("WEBP_QUALITY must be an integer from 1 to 100")
 	}
-
-	if raw := strings.TrimSpace(os.Getenv("SKIP_EXISTING")); raw != "" {
-		skip, err := strconv.ParseBool(raw)
-		if err != nil {
-			return Config{}, fmt.Errorf("SKIP_EXISTING must be a boolean value")
-		}
-		cfg.SkipExisting = skip
-	}
-
-	if raw := strings.TrimSpace(os.Getenv("DRY_RUN")); raw != "" {
-		dryRun, err := strconv.ParseBool(raw)
-		if err != nil {
-			return Config{}, fmt.Errorf("DRY_RUN must be a boolean value")
-		}
-		cfg.DryRun = dryRun
+	if cfg.Concurrency < 1 {
+		return Config{}, fmt.Errorf("CONCURRENCY must be an integer greater than 0")
 	}
 
 	var missing []string
@@ -109,6 +111,34 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func applyAliases() error {
+	if err := setFromAlias("SPACES_KEY", "AWS_ACCESS_KEY_ID"); err != nil {
+		return err
+	}
+	if err := setFromAlias("SPACES_SECRET", "AWS_SECRET_ACCESS_KEY"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func setFromAlias(targetKey, aliasKey string) error {
+	if strings.TrimSpace(os.Getenv(targetKey)) != "" {
+		return nil
+	}
+
+	aliasValue := strings.TrimSpace(os.Getenv(aliasKey))
+	if aliasValue == "" {
+		return nil
+	}
+
+	if err := os.Setenv(targetKey, aliasValue); err != nil {
+		return fmt.Errorf("set %s from %s: %w", targetKey, aliasKey, err)
+	}
+
+	return nil
 }
 
 func loadDotEnv() error {
@@ -156,16 +186,6 @@ func normalizeEndpoint(endpoint string) string {
 	}
 
 	return "https://" + endpoint
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-
-	return ""
 }
 
 func max(a, b int) int {

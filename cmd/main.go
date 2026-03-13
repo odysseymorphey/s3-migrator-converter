@@ -1,0 +1,60 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	"s3mc/internal/config"
+	"s3mc/internal/migration"
+	"s3mc/internal/spaces"
+)
+
+func main() {
+	if err := run(context.Background()); err != nil {
+		log.Printf("migration error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	log.Printf(
+		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d concurrency=%d skip_existing=%t",
+		cfg.SourceBucket,
+		cfg.SourcePrefix,
+		cfg.DestBucket,
+		cfg.DestPrefix,
+		cfg.WebPQuality,
+		cfg.Concurrency,
+		cfg.SkipExisting,
+	)
+
+	client, err := spaces.NewClient(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("create spaces client: %w", err)
+	}
+
+	stats, listErr := migration.Run(ctx, client, cfg)
+	log.Printf(
+		"migration summary: discovered=%d converted=%d skipped=%d failed=%d",
+		stats.Discovered,
+		stats.Converted,
+		stats.Skipped,
+		stats.Failed,
+	)
+
+	if listErr != nil {
+		return fmt.Errorf("list source objects: %w", listErr)
+	}
+	if stats.Failed > 0 {
+		return fmt.Errorf("migration finished with %d failed objects", stats.Failed)
+	}
+
+	return nil
+}

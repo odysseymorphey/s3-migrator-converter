@@ -1,7 +1,9 @@
 # s3-migrator-converter
 
-One-shot CLI tool that reads `.png` files from a source DigitalOcean Spaces bucket,
+One-shot CLI tool that reads PNG files from a source DigitalOcean Spaces bucket,
 converts them to `.webp`, and uploads them to a destination bucket.
+
+The tool supports keys without file extension and detects PNG by object metadata/header.
 
 ## Project layout
 
@@ -9,6 +11,17 @@ converts them to `.webp`, and uploads them to a destination bucket.
 - `internal/config` - environment and `.env` config loading
 - `internal/spaces` - S3/Spaces client setup
 - `internal/migration` - listing, conversion, upload, retries, worker pool
+
+## PNG detection
+
+For each source object, the app uses an auto strategy:
+
+1. If key extension is `.png`, treat it as PNG.
+2. Otherwise check source object `Content-Type` via `HeadObject`.
+3. If `Content-Type` is not `image/png`, read first 8 bytes (`Range: bytes=0-7`) and
+   verify PNG magic header.
+
+Only confirmed PNG objects are converted.
 
 ## Configuration
 

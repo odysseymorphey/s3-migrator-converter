@@ -88,3 +88,20 @@ func isNotFoundError(err error) bool {
 
 	return false
 }
+
+func isRangeNotSatisfiable(err error) bool {
+	var respErr *smithyhttp.ResponseError
+	if errors.As(err, &respErr) {
+		return respErr.HTTPStatusCode() == 416
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "InvalidRange", "RequestedRangeNotSatisfiable", "416":
+			return true
+		}
+	}
+
+	return false
+}

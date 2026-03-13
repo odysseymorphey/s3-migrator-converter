@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"mime"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,6 +18,91 @@ import (
 const (
 	defaultRetryCount = 4
 )
+
+var pngMagicHeader = []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}
+
+func isPNGObject(ctx context.Context, client *s3.Client, bucket, key string) (bool, error) {
+	if isPNGKey(key) {
+		return true, nil
+	}
+
+	contentType, err := objectContentType(ctx, client, bucket, key)
+	if err != nil {
+		return false, err
+	}
+	if isPNGContentType(contentType) {
+		return true, nil
+	}
+
+	return hasPNGMagicHeader(ctx, client, bucket, key)
+}
+
+func objectContentType(ctx context.Context, client *s3.Client, bucket, key string) (string, error) {
+	contentType := ""
+	err := retry(ctx, 3, 300*time.Millisecond, func() error {
+		out, err := client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return err
+		}
+
+		contentType = strings.TrimSpace(aws.ToString(out.ContentType))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return contentType, nil
+}
+
+func isPNGContentType(contentType string) bool {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+
+	return strings.EqualFold(mediaType, "image/png")
+}
+
+func hasPNGMagicHeader(ctx context.Context, client *s3.Client, bucket, key string) (bool, error) {
+	header := []byte(nil)
+	err := retry(ctx, 3, 300*time.Millisecond, func() error {
+		out, err := client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+			Range:  aws.String("bytes=0-7"),
+		})
+		if err != nil {
+			if isRangeNotSatisfiable(err) {
+				header = nil
+				return nil
+			}
+			return err
+		}
+		defer out.Body.Close()
+
+		data, err := io.ReadAll(io.LimitReader(out.Body, int64(len(pngMagicHeader))))
+		if err != nil {
+			return err
+		}
+
+		header = data
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return bytes.Equal(header, pngMagicHeader), nil
+}
 
 func objectExists(ctx context.Context, client *s3.Client, bucket, key string) (bool, error) {
 	exists := false

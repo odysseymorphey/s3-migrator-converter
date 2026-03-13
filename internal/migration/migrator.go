@@ -14,18 +14,24 @@ import (
 )
 
 type Stats struct {
-	Discovered int64
-	Converted  int64
-	Skipped    int64
-	Failed     int64
+	Discovered      int64
+	Converted       int64
+	SkippedExisting int64
+	SkippedNonPNG   int64
+	Failed          int64
+}
+
+func (s Stats) SkippedTotal() int64 {
+	return s.SkippedExisting + s.SkippedNonPNG
 }
 
 type resultStatus string
 
 const (
-	statusConverted resultStatus = "converted"
-	statusSkipped   resultStatus = "skipped"
-	statusFailed    resultStatus = "failed"
+	statusConverted       resultStatus = "converted"
+	statusSkippedExisting resultStatus = "skipped_existing"
+	statusSkippedNonPNG   resultStatus = "skipped_non_png"
+	statusFailed          resultStatus = "failed"
 )
 
 type fileResult struct {
@@ -57,7 +63,7 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	}
 
 	go func() {
-		discovered, err := enqueuePNGKeys(ctx, client, cfg, jobs)
+		discovered, err := enqueueKeys(ctx, client, cfg, jobs)
 		if err != nil {
 			cancel()
 		}
@@ -82,9 +88,12 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 		case statusConverted:
 			stats.Converted++
 			log.Printf("converted: %s -> %s", res.sourceKey, res.destKey)
-		case statusSkipped:
-			stats.Skipped++
+		case statusSkippedExisting:
+			stats.SkippedExisting++
 			log.Printf("skipped (already exists): %s", res.destKey)
+		case statusSkippedNonPNG:
+			stats.SkippedNonPNG++
+			log.Printf("skipped (not png): %s", res.sourceKey)
 		case statusFailed:
 			stats.Failed++
 			log.Printf("failed: %s -> %s: %v", res.sourceKey, res.destKey, res.err)
@@ -100,7 +109,7 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	return stats, nil
 }
 
-func enqueuePNGKeys(ctx context.Context, client *s3.Client, cfg appconfig.Config, jobs chan<- string) (int64, error) {
+func enqueueKeys(ctx context.Context, client *s3.Client, cfg appconfig.Config, jobs chan<- string) (int64, error) {
 	input := &s3.ListObjectsV2Input{Bucket: aws.String(cfg.SourceBucket)}
 	if cfg.SourcePrefix != "" {
 		input.Prefix = aws.String(cfg.SourcePrefix)
@@ -117,7 +126,7 @@ func enqueuePNGKeys(ctx context.Context, client *s3.Client, cfg appconfig.Config
 
 		for _, obj := range page.Contents {
 			key := strings.TrimSpace(aws.ToString(obj.Key))
-			if key == "" || !isPNGKey(key) {
+			if key == "" || strings.HasSuffix(key, "/") {
 				continue
 			}
 
@@ -161,6 +170,16 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 		status:    statusFailed,
 	}
 
+	isPNG, err := isPNGObject(ctx, client, cfg.SourceBucket, sourceKey)
+	if err != nil {
+		res.err = fmt.Errorf("detect png object: %w", err)
+		return res
+	}
+	if !isPNG {
+		res.status = statusSkippedNonPNG
+		return res
+	}
+
 	if cfg.SkipExisting {
 		exists, err := objectExists(ctx, client, cfg.DestBucket, destKey)
 		if err != nil {
@@ -168,7 +187,7 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 			return res
 		}
 		if exists {
-			res.status = statusSkipped
+			res.status = statusSkippedExisting
 			return res
 		}
 	}

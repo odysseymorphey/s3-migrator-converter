@@ -42,10 +42,12 @@ func run(ctx context.Context) error {
 
 	stats, listErr := migration.Run(ctx, client, cfg)
 	log.Printf(
-		"migration summary: discovered=%d converted=%d skipped=%d failed=%d",
+		"migration summary: discovered=%d converted=%d skipped_existing=%d skipped_non_png=%d skipped_total=%d failed=%d",
 		stats.Discovered,
 		stats.Converted,
-		stats.Skipped,
+		stats.SkippedExisting,
+		stats.SkippedNonPNG,
+		stats.SkippedTotal(),
 		stats.Failed,
 	)
 

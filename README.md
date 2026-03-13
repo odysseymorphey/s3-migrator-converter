@@ -44,20 +44,38 @@ Required variables:
 - `SPACES_SECRET`
 - `SPACES_REGION`
 - `SOURCE_BUCKET`
-- `DEST_BUCKET`
 
 Optional variables:
 
+- `DEST_BUCKET` (defaults to `SOURCE_BUCKET`)
 - `SOURCE_PREFIX`
 - `DEST_PREFIX`
 - `SPACES_ENDPOINT`
 - `WEBP_QUALITY` (1..100, default `80`)
 - `CONCURRENCY` (default `max(CPU, 2)`)
 - `SKIP_EXISTING` (default `true`)
+- `DRY_RUN` (default `false`)
 - `ENV_FILE` (custom path to env file)
+
+## Same bucket, different folder
+
+You can migrate within one bucket by leaving `DEST_BUCKET` empty and using prefixes:
+
+```bash
+SOURCE_BUCKET=my-bucket
+DEST_BUCKET=
+SOURCE_PREFIX=/folder
+DEST_PREFIX=/folder-webp
+```
 
 ## Run
 
 ```bash
 go run ./cmd
+```
+
+Dry run mode (plan only, no uploads):
+
+```bash
+DRY_RUN=true go run ./cmd
 ```

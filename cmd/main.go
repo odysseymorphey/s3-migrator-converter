@@ -25,7 +25,7 @@ func run(ctx context.Context) error {
 	}
 
 	log.Printf(
-		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d concurrency=%d skip_existing=%t",
+		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d concurrency=%d skip_existing=%t dry_run=%t",
 		cfg.SourceBucket,
 		cfg.SourcePrefix,
 		cfg.DestBucket,
@@ -33,6 +33,7 @@ func run(ctx context.Context) error {
 		cfg.WebPQuality,
 		cfg.Concurrency,
 		cfg.SkipExisting,
+		cfg.DryRun,
 	)
 
 	client, err := spaces.NewClient(ctx, cfg)
@@ -42,8 +43,9 @@ func run(ctx context.Context) error {
 
 	stats, listErr := migration.Run(ctx, client, cfg)
 	log.Printf(
-		"migration summary: discovered=%d converted=%d skipped_existing=%d skipped_non_png=%d skipped_total=%d failed=%d",
+		"migration summary: discovered=%d planned=%d converted=%d skipped_existing=%d skipped_non_png=%d skipped_total=%d failed=%d",
 		stats.Discovered,
+		stats.Planned,
 		stats.Converted,
 		stats.SkippedExisting,
 		stats.SkippedNonPNG,

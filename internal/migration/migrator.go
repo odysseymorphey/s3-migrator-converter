@@ -15,6 +15,7 @@ import (
 
 type Stats struct {
 	Discovered      int64
+	Planned         int64
 	Converted       int64
 	SkippedExisting int64
 	SkippedNonPNG   int64
@@ -29,6 +30,7 @@ type resultStatus string
 
 const (
 	statusConverted       resultStatus = "converted"
+	statusPlanned         resultStatus = "planned"
 	statusSkippedExisting resultStatus = "skipped_existing"
 	statusSkippedNonPNG   resultStatus = "skipped_non_png"
 	statusFailed          resultStatus = "failed"
@@ -85,6 +87,9 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	stats := Stats{}
 	for res := range results {
 		switch res.status {
+		case statusPlanned:
+			stats.Planned++
+			log.Printf("planned (dry-run): %s -> %s", res.sourceKey, res.destKey)
 		case statusConverted:
 			stats.Converted++
 			log.Printf("converted: %s -> %s", res.sourceKey, res.destKey)
@@ -129,6 +134,9 @@ func enqueueKeys(ctx context.Context, client *s3.Client, cfg appconfig.Config, j
 			if key == "" || strings.HasSuffix(key, "/") {
 				continue
 			}
+			if shouldSkipDestinationKey(cfg, key) {
+				continue
+			}
 
 			select {
 			case jobs <- key:
@@ -140,6 +148,17 @@ func enqueueKeys(ctx context.Context, client *s3.Client, cfg appconfig.Config, j
 	}
 
 	return discovered, nil
+}
+
+func shouldSkipDestinationKey(cfg appconfig.Config, key string) bool {
+	if cfg.SourceBucket != cfg.DestBucket {
+		return false
+	}
+	if cfg.DestPrefix == "" || cfg.DestPrefix == cfg.SourcePrefix {
+		return false
+	}
+
+	return strings.HasPrefix(key, cfg.DestPrefix)
 }
 
 func worker(ctx context.Context, client *s3.Client, cfg appconfig.Config, jobs <-chan string, results chan<- fileResult) {
@@ -190,6 +209,11 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 			res.status = statusSkippedExisting
 			return res
 		}
+	}
+
+	if cfg.DryRun {
+		res.status = statusPlanned
+		return res
 	}
 
 	webpData, err := downloadAndConvertToWebP(ctx, client, cfg.SourceBucket, sourceKey, cfg.WebPQuality)

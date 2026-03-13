@@ -27,6 +27,7 @@ type Config struct {
 	WebPQuality  int
 	Concurrency  int
 	SkipExisting bool
+	DryRun       bool
 }
 
 func Load() (Config, error) {
@@ -45,6 +46,10 @@ func Load() (Config, error) {
 		WebPQuality:  defaultWebPQuality,
 		Concurrency:  max(runtime.NumCPU(), 2),
 		SkipExisting: true,
+		DryRun:       false,
+	}
+	if cfg.DestBucket == "" {
+		cfg.DestBucket = cfg.SourceBucket
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("SPACES_ENDPOINT")); raw != "" {
@@ -77,6 +82,14 @@ func Load() (Config, error) {
 		cfg.SkipExisting = skip
 	}
 
+	if raw := strings.TrimSpace(os.Getenv("DRY_RUN")); raw != "" {
+		dryRun, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf("DRY_RUN must be a boolean value")
+		}
+		cfg.DryRun = dryRun
+	}
+
 	var missing []string
 	if cfg.SpacesKey == "" {
 		missing = append(missing, "SPACES_KEY (or AWS_ACCESS_KEY_ID)")
@@ -89,9 +102,6 @@ func Load() (Config, error) {
 	}
 	if cfg.SourceBucket == "" {
 		missing = append(missing, "SOURCE_BUCKET")
-	}
-	if cfg.DestBucket == "" {
-		missing = append(missing, "DEST_BUCKET")
 	}
 
 	if len(missing) > 0 {

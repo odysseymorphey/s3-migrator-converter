@@ -222,7 +222,7 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 		return res
 	}
 
-	if err := uploadWebP(ctx, client, cfg.DestBucket, destKey, webpData); err != nil {
+	if err := uploadWebP(ctx, client, cfg.DestBucket, destKey, webpData, cfg.CacheControl, cfg.PublicRead); err != nil {
 		res.err = err
 		return res
 	}

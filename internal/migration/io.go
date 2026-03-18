@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/chai2010/webp"
 )
 
@@ -175,14 +176,23 @@ func downloadObject(ctx context.Context, client *s3.Client, bucket, key string) 
 	return payload, nil
 }
 
-func uploadWebP(ctx context.Context, client *s3.Client, bucket, key string, data []byte) error {
+func uploadWebP(ctx context.Context, client *s3.Client, bucket, key string, data []byte, cacheControl string, publicRead bool) error {
 	err := retry(ctx, defaultRetryCount, 500*time.Millisecond, func() error {
-		_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		input := &s3.PutObjectInput{
 			Bucket:      aws.String(bucket),
 			Key:         aws.String(key),
 			Body:        bytes.NewReader(data),
 			ContentType: aws.String("image/webp"),
-		})
+		}
+
+		if strings.TrimSpace(cacheControl) != "" {
+			input.CacheControl = aws.String(cacheControl)
+		}
+		if publicRead {
+			input.ACL = types.ObjectCannedACLPublicRead
+		}
+
+		_, err := client.PutObject(ctx, input)
 		return err
 	})
 	if err != nil {

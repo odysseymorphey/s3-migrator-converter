@@ -26,6 +26,8 @@ type Config struct {
 	Concurrency  int
 	SkipExisting bool
 	DryRun       bool
+	CacheControl string
+	PublicRead   bool
 }
 
 type envConfig struct {
@@ -39,10 +41,12 @@ type envConfig struct {
 	DestBucket   string `env:"DEST_BUCKET"`
 	DestPrefix   string `env:"DEST_PREFIX"`
 
-	WebPQuality  int  `env:"WEBP_QUALITY" envDefault:"80"`
-	Concurrency  int  `env:"CONCURRENCY"`
-	SkipExisting bool `env:"SKIP_EXISTING" envDefault:"true"`
-	DryRun       bool `env:"DRY_RUN" envDefault:"false"`
+	WebPQuality  int    `env:"WEBP_QUALITY" envDefault:"80"`
+	Concurrency  int    `env:"CONCURRENCY"`
+	SkipExisting bool   `env:"SKIP_EXISTING" envDefault:"true"`
+	DryRun       bool   `env:"DRY_RUN" envDefault:"false"`
+	CacheControl string `env:"CACHE_CONTROL" envDefault:"public, max-age=3600, s-max-age=86400"`
+	PublicRead   bool   `env:"PUBLIC_READ" envDefault:"true"`
 }
 
 func Load() (Config, error) {
@@ -73,6 +77,8 @@ func Load() (Config, error) {
 		Concurrency:  parsed.Concurrency,
 		SkipExisting: parsed.SkipExisting,
 		DryRun:       parsed.DryRun,
+		CacheControl: strings.TrimSpace(parsed.CacheControl),
+		PublicRead:   parsed.PublicRead,
 	}
 
 	if cfg.DestBucket == "" {
@@ -83,6 +89,9 @@ func Load() (Config, error) {
 	}
 	if cfg.Concurrency == 0 {
 		cfg.Concurrency = max(runtime.NumCPU(), 2)
+	}
+	if cfg.CacheControl == "" {
+		cfg.CacheControl = "public, max-age=3600, s-max-age=86400"
 	}
 
 	if cfg.WebPQuality < 1 || cfg.WebPQuality > 100 {

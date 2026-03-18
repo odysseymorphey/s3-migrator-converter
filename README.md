@@ -3,6 +3,10 @@
 One-shot CLI tool that reads PNG files from a source DigitalOcean Spaces bucket,
 converts them to `.webp`, and uploads them to a destination bucket.
 
+Uploaded `.webp` objects are stored with configurable ACL/cache headers.
+By default this is `ACL=public-read` and
+`Cache-Control: public, max-age=3600, s-max-age=86400`.
+
 The tool supports keys without file extension and detects PNG by object metadata/header.
 
 ## Project layout
@@ -55,6 +59,8 @@ Optional variables:
 - `CONCURRENCY` (default `max(CPU, 2)`)
 - `SKIP_EXISTING` (default `true`)
 - `DRY_RUN` (default `false`)
+- `CACHE_CONTROL` (default `public, max-age=3600, s-max-age=86400`)
+- `PUBLIC_READ` (default `true`)
 - `ENV_FILE` (custom path to env file)
 
 ## Same bucket, different folder

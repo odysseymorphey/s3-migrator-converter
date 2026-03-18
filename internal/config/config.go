@@ -24,6 +24,7 @@ type Config struct {
 
 	WebPQuality  int
 	WebPLossless bool
+	WebPExact    bool
 	Concurrency  int
 	SkipExisting bool
 	DryRun       bool
@@ -44,6 +45,7 @@ type envConfig struct {
 
 	WebPQuality  int    `env:"WEBP_QUALITY" envDefault:"80"`
 	WebPLossless bool   `env:"WEBP_LOSSLESS" envDefault:"false"`
+	WebPExact    bool   `env:"WEBP_EXACT" envDefault:"true"`
 	Concurrency  int    `env:"CONCURRENCY"`
 	SkipExisting bool   `env:"SKIP_EXISTING" envDefault:"true"`
 	DryRun       bool   `env:"DRY_RUN" envDefault:"false"`
@@ -77,6 +79,7 @@ func Load() (Config, error) {
 
 		WebPQuality:  parsed.WebPQuality,
 		WebPLossless: parsed.WebPLossless,
+		WebPExact:    parsed.WebPExact,
 		Concurrency:  parsed.Concurrency,
 		SkipExisting: parsed.SkipExisting,
 		DryRun:       parsed.DryRun,

@@ -130,7 +130,7 @@ func objectExists(ctx context.Context, client *s3.Client, bucket, key string) (b
 	return exists, nil
 }
 
-func downloadAndConvertToWebP(ctx context.Context, client *s3.Client, bucket, key string, quality int, lossless bool) ([]byte, error) {
+func downloadAndConvertToWebP(ctx context.Context, client *s3.Client, bucket, key string, quality int, lossless bool, exact bool) ([]byte, error) {
 	pngData, err := downloadObject(ctx, client, bucket, key)
 	if err != nil {
 		return nil, fmt.Errorf("download object %q: %w", key, err)
@@ -144,6 +144,7 @@ func downloadAndConvertToWebP(ctx context.Context, client *s3.Client, bucket, ke
 	opts := &webp.Options{Quality: float32(quality)}
 	if lossless {
 		opts.Lossless = true
+		opts.Exact = exact
 	}
 
 	var encoded bytes.Buffer

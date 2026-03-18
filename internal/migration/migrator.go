@@ -216,7 +216,7 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 		return res
 	}
 
-	webpData, err := downloadAndConvertToWebP(ctx, client, cfg.SourceBucket, sourceKey, cfg.WebPQuality, cfg.WebPLossless)
+	webpData, err := downloadAndConvertToWebP(ctx, client, cfg.SourceBucket, sourceKey, cfg.WebPQuality, cfg.WebPLossless, cfg.WebPExact)
 	if err != nil {
 		res.err = err
 		return res

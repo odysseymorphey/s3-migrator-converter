@@ -57,6 +57,7 @@ Optional variables:
 - `SPACES_ENDPOINT`
 - `WEBP_QUALITY` (1..100, default `80`)
 - `WEBP_LOSSLESS` (default `false`; when `true`, encodes WebP in lossless mode)
+- `WEBP_EXACT` (default `true`; applies only in lossless mode and preserves RGB in transparent pixels)
 - `CONCURRENCY` (default `max(CPU, 2)`)
 - `SKIP_EXISTING` (default `true`)
 - `DRY_RUN` (default `false`)

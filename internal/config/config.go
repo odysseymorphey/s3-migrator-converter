@@ -23,6 +23,7 @@ type Config struct {
 	DestPrefix   string
 
 	WebPQuality  int
+	WebPLossless bool
 	Concurrency  int
 	SkipExisting bool
 	DryRun       bool
@@ -42,6 +43,7 @@ type envConfig struct {
 	DestPrefix   string `env:"DEST_PREFIX"`
 
 	WebPQuality  int    `env:"WEBP_QUALITY" envDefault:"80"`
+	WebPLossless bool   `env:"WEBP_LOSSLESS" envDefault:"false"`
 	Concurrency  int    `env:"CONCURRENCY"`
 	SkipExisting bool   `env:"SKIP_EXISTING" envDefault:"true"`
 	DryRun       bool   `env:"DRY_RUN" envDefault:"false"`
@@ -74,6 +76,7 @@ func Load() (Config, error) {
 		DestPrefix:   normalizePrefix(parsed.DestPrefix),
 
 		WebPQuality:  parsed.WebPQuality,
+		WebPLossless: parsed.WebPLossless,
 		Concurrency:  parsed.Concurrency,
 		SkipExisting: parsed.SkipExisting,
 		DryRun:       parsed.DryRun,

@@ -25,12 +25,13 @@ func run(ctx context.Context) error {
 	}
 
 	log.Printf(
-		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d concurrency=%d skip_existing=%t dry_run=%t public_read=%t cache_control=%q",
+		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d lossless=%t concurrency=%d skip_existing=%t dry_run=%t public_read=%t cache_control=%q",
 		cfg.SourceBucket,
 		cfg.SourcePrefix,
 		cfg.DestBucket,
 		cfg.DestPrefix,
 		cfg.WebPQuality,
+		cfg.WebPLossless,
 		cfg.Concurrency,
 		cfg.SkipExisting,
 		cfg.DryRun,

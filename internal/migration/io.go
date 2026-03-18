@@ -191,9 +191,7 @@ func uploadWebP(ctx context.Context, client *s3.Client, bucket, key string, data
 			ContentType: aws.String("image/webp"),
 		}
 
-		if strings.TrimSpace(cacheControl) != "" {
-			input.CacheControl = aws.String(cacheControl)
-		}
+		if cacheControl != "" {
 		if publicRead {
 			input.ACL = types.ObjectCannedACLPublicRead
 		}

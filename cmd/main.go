@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"s3mc/internal/config"
 	"s3mc/internal/migration"
@@ -12,7 +14,10 @@ import (
 )
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
 		log.Printf("migration error: %v", err)
 		os.Exit(1)
 	}

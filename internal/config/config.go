@@ -203,10 +203,3 @@ func normalizeEndpoint(endpoint string) string {
 	return "https://" + endpoint
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-
-	return b
-}

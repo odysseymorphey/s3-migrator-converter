@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -50,10 +52,10 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	jobs := make(chan string, cfg.Concurrency*2)
 	results := make(chan fileResult, cfg.Concurrency*2)
 
-	listDone := make(chan struct {
-		discovered int64
-		err        error
-	}, 1)
+	var discovered atomic.Int64
+	var listErr error
+	var listWG sync.WaitGroup
+	listWG.Add(1)
 
 	var workersWG sync.WaitGroup
 	for i := 0; i < cfg.Concurrency; i++ {
@@ -65,18 +67,14 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	}
 
 	go func() {
-		discovered, err := enqueueKeys(ctx, client, cfg, jobs)
+		defer listWG.Done()
+		n, err := enqueueKeys(ctx, client, cfg, jobs)
 		if err != nil {
+			listErr = err
 			cancel()
 		}
+		discovered.Store(n)
 		close(jobs)
-		listDone <- struct {
-			discovered int64
-			err        error
-		}{
-			discovered: discovered,
-			err:        err,
-		}
 	}()
 
 	go func() {
@@ -84,8 +82,31 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 		close(results)
 	}()
 
+	progressTicker := time.NewTicker(5 * time.Second)
+	defer progressTicker.Stop()
+
+	var processed atomic.Int64
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-progressTicker.C:
+				p := processed.Load()
+				total := discovered.Load()
+				if total > 0 {
+					log.Printf("progress: %d / %d (%.0f%%)", p, total, float64(p)/float64(total)*100)
+				} else {
+					log.Printf("progress: %d processed (listing in progress...)", p)
+				}
+			}
+		}
+	}()
+
 	stats := Stats{}
 	for res := range results {
+		processed.Add(1)
 		switch res.status {
 		case statusPlanned:
 			stats.Planned++
@@ -105,10 +126,10 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 		}
 	}
 
-	listOutcome := <-listDone
-	stats.Discovered = listOutcome.discovered
-	if listOutcome.err != nil {
-		return stats, listOutcome.err
+	listWG.Wait()
+	stats.Discovered = discovered.Load()
+	if listErr != nil {
+		return stats, listErr
 	}
 
 	return stats, nil

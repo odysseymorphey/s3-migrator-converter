@@ -29,12 +29,17 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	if err := migration.ValidateFormats(cfg.SourceFormats); err != nil {
+		return err
+	}
+
 	log.Printf(
-		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q quality=%d lossless=%t exact=%t concurrency=%d skip_existing=%t dry_run=%t public_read=%t cache_control=%q",
+		"starting one-shot migration: source=%s prefix=%q destination=%s prefix=%q formats=%v quality=%d lossless=%t exact=%t concurrency=%d skip_existing=%t dry_run=%t public_read=%t cache_control=%q",
 		cfg.SourceBucket,
 		cfg.SourcePrefix,
 		cfg.DestBucket,
 		cfg.DestPrefix,
+		cfg.SourceFormats,
 		cfg.WebPQuality,
 		cfg.WebPLossless,
 		cfg.WebPExact,
@@ -52,12 +57,12 @@ func run(ctx context.Context) error {
 
 	stats, listErr := migration.Run(ctx, client, cfg)
 	log.Printf(
-		"migration summary: discovered=%d planned=%d converted=%d skipped_existing=%d skipped_non_png=%d skipped_total=%d failed=%d",
+		"migration summary: discovered=%d planned=%d converted=%d skipped_existing=%d skipped_non_match=%d skipped_total=%d failed=%d",
 		stats.Discovered,
 		stats.Planned,
 		stats.Converted,
 		stats.SkippedExisting,
-		stats.SkippedNonPNG,
+		stats.SkippedNonMatch,
 		stats.SkippedTotal(),
 		stats.Failed,
 	)

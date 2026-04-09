@@ -27,9 +27,10 @@ type Config struct {
 	WebPExact    bool
 	Concurrency  int
 	SkipExisting bool
-	DryRun       bool
-	CacheControl string
-	PublicRead   bool
+	DryRun        bool
+	CacheControl  string
+	PublicRead    bool
+	SourceFormats []string
 }
 
 type envConfig struct {
@@ -48,9 +49,10 @@ type envConfig struct {
 	WebPExact    bool   `env:"WEBP_EXACT" envDefault:"true"`
 	Concurrency  int    `env:"CONCURRENCY"`
 	SkipExisting bool   `env:"SKIP_EXISTING" envDefault:"true"`
-	DryRun       bool   `env:"DRY_RUN" envDefault:"false"`
-	CacheControl string `env:"CACHE_CONTROL" envDefault:"public, max-age=3600, s-max-age=86400"`
-	PublicRead   bool   `env:"PUBLIC_READ" envDefault:"true"`
+	DryRun        bool   `env:"DRY_RUN" envDefault:"false"`
+	CacheControl  string `env:"CACHE_CONTROL" envDefault:"public, max-age=3600, s-max-age=86400"`
+	PublicRead    bool   `env:"PUBLIC_READ" envDefault:"true"`
+	SourceFormats string `env:"SOURCE_FORMATS" envDefault:"png"`
 }
 
 func Load() (Config, error) {
@@ -83,8 +85,9 @@ func Load() (Config, error) {
 		Concurrency:  parsed.Concurrency,
 		SkipExisting: parsed.SkipExisting,
 		DryRun:       parsed.DryRun,
-		CacheControl: strings.TrimSpace(parsed.CacheControl),
-		PublicRead:   parsed.PublicRead,
+		CacheControl:  strings.TrimSpace(parsed.CacheControl),
+		PublicRead:    parsed.PublicRead,
+		SourceFormats: parseFormats(parsed.SourceFormats),
 	}
 
 	if cfg.DestBucket == "" {
@@ -201,5 +204,17 @@ func normalizeEndpoint(endpoint string) string {
 	}
 
 	return "https://" + endpoint
+}
+
+func parseFormats(raw string) []string {
+	parts := strings.Split(raw, ",")
+	formats := make([]string, 0, len(parts))
+	for _, p := range parts {
+		f := strings.TrimSpace(strings.ToLower(p))
+		if f != "" {
+			formats = append(formats, f)
+		}
+	}
+	return formats
 }
 

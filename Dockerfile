@@ -1,8 +1,8 @@
-FROM golang:1.25 AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
 
-# RUN apk add --no-cache build-base
+RUN apk add --no-cache build-base
 
 COPY go.mod go.sum ./
 RUN go mod download

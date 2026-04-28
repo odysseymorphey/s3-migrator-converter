@@ -6,6 +6,8 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -18,12 +20,12 @@ type Stats struct {
 	Planned         int64
 	Converted       int64
 	SkippedExisting int64
-	SkippedNonPNG   int64
+	SkippedNonMatch   int64
 	Failed          int64
 }
 
 func (s Stats) SkippedTotal() int64 {
-	return s.SkippedExisting + s.SkippedNonPNG
+	return s.SkippedExisting + s.SkippedNonMatch
 }
 
 type resultStatus string
@@ -32,7 +34,7 @@ const (
 	statusConverted       resultStatus = "converted"
 	statusPlanned         resultStatus = "planned"
 	statusSkippedExisting resultStatus = "skipped_existing"
-	statusSkippedNonPNG   resultStatus = "skipped_non_png"
+	statusSkippedNonMatch   resultStatus = "skipped_non_match"
 	statusFailed          resultStatus = "failed"
 )
 
@@ -50,10 +52,10 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	jobs := make(chan string, cfg.Concurrency*2)
 	results := make(chan fileResult, cfg.Concurrency*2)
 
-	listDone := make(chan struct {
-		discovered int64
-		err        error
-	}, 1)
+	var discovered atomic.Int64
+	var listErr error
+	var listWG sync.WaitGroup
+	listWG.Add(1)
 
 	var workersWG sync.WaitGroup
 	for i := 0; i < cfg.Concurrency; i++ {
@@ -65,18 +67,14 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 	}
 
 	go func() {
-		discovered, err := enqueueKeys(ctx, client, cfg, jobs)
+		defer listWG.Done()
+		n, err := enqueueKeys(ctx, client, cfg, jobs)
 		if err != nil {
+			listErr = err
 			cancel()
 		}
+		discovered.Store(n)
 		close(jobs)
-		listDone <- struct {
-			discovered int64
-			err        error
-		}{
-			discovered: discovered,
-			err:        err,
-		}
 	}()
 
 	go func() {
@@ -84,8 +82,31 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 		close(results)
 	}()
 
+	progressTicker := time.NewTicker(5 * time.Second)
+	defer progressTicker.Stop()
+
+	var processed atomic.Int64
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-progressTicker.C:
+				p := processed.Load()
+				total := discovered.Load()
+				if total > 0 {
+					log.Printf("progress: %d / %d (%.0f%%)", p, total, float64(p)/float64(total)*100)
+				} else {
+					log.Printf("progress: %d processed (listing in progress...)", p)
+				}
+			}
+		}
+	}()
+
 	stats := Stats{}
 	for res := range results {
+		processed.Add(1)
 		switch res.status {
 		case statusPlanned:
 			stats.Planned++
@@ -96,19 +117,19 @@ func Run(ctx context.Context, client *s3.Client, cfg appconfig.Config) (Stats, e
 		case statusSkippedExisting:
 			stats.SkippedExisting++
 			log.Printf("skipped (already exists): %s", res.destKey)
-		case statusSkippedNonPNG:
-			stats.SkippedNonPNG++
-			log.Printf("skipped (not png): %s", res.sourceKey)
+		case statusSkippedNonMatch:
+			stats.SkippedNonMatch++
+			log.Printf("skipped (unsupported format): %s", res.sourceKey)
 		case statusFailed:
 			stats.Failed++
 			log.Printf("failed: %s -> %s: %v", res.sourceKey, res.destKey, res.err)
 		}
 	}
 
-	listOutcome := <-listDone
-	stats.Discovered = listOutcome.discovered
-	if listOutcome.err != nil {
-		return stats, listOutcome.err
+	listWG.Wait()
+	stats.Discovered = discovered.Load()
+	if listErr != nil {
+		return stats, listErr
 	}
 
 	return stats, nil
@@ -189,13 +210,13 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 		status:    statusFailed,
 	}
 
-	isPNG, err := isPNGObject(ctx, client, cfg.SourceBucket, sourceKey)
+	format, err := detectObjectFormat(ctx, client, cfg.SourceBucket, sourceKey, cfg.SourceFormats)
 	if err != nil {
-		res.err = fmt.Errorf("detect png object: %w", err)
+		res.err = fmt.Errorf("detect format: %w", err)
 		return res
 	}
-	if !isPNG {
-		res.status = statusSkippedNonPNG
+	if format == nil {
+		res.status = statusSkippedNonMatch
 		return res
 	}
 
@@ -216,13 +237,13 @@ func migrateOne(ctx context.Context, client *s3.Client, cfg appconfig.Config, so
 		return res
 	}
 
-	webpData, err := downloadAndConvertToWebP(ctx, client, cfg.SourceBucket, sourceKey, cfg.WebPQuality)
+	webpData, err := downloadAndConvert(ctx, client, cfg.SourceBucket, sourceKey, format, cfg.WebPQuality, cfg.WebPLossless, cfg.WebPExact)
 	if err != nil {
 		res.err = err
 		return res
 	}
 
-	if err := uploadWebP(ctx, client, cfg.DestBucket, destKey, webpData); err != nil {
+	if err := uploadWebP(ctx, client, cfg.DestBucket, destKey, webpData, cfg.CacheControl, cfg.PublicRead); err != nil {
 		res.err = err
 		return res
 	}

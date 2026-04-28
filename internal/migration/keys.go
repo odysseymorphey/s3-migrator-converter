@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-func isPNGKey(key string) bool {
-	return strings.EqualFold(path.Ext(key), ".png")
-}
-
 func destinationKey(sourceKey, sourcePrefix, destPrefix string) string {
 	relative := strings.TrimPrefix(sourceKey, sourcePrefix)
 	relative = strings.TrimPrefix(relative, "/")
